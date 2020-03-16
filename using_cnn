@@ -1,0 +1,93 @@
+import os
+import sys
+import pandas as pd
+import matplotlib.pyplot as plt
+from keras.layers import Dense,Input,Conv1D,MaxPooling1D,Embedding,GlobalMaxPooling1D
+from keras.models import Model
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import  pad_sequences
+from sklearn.metrics import roc_auc_score
+import numpy as np
+
+
+
+
+#train = pd.read_csv('Restaurant_Reviews.tsv')
+dataset = pd.read_csv('Restaurant_Reviews.tsv',delimiter='\t',quoting=3)
+target = dataset.iloc[:,1].values
+
+reviews = dataset.iloc[:,0].values
+#shashank = ["loo","shashi"]
+
+
+max_word = 20000
+max_length = 100
+embedding_dim = 100
+epchos = 10
+batch_size = 32
+validation_split = 0.2
+
+
+print("loading pretrained data")
+word2vec = {}
+with open('glove.6B.100d.txt',encoding="utf8") as f:
+    for i in f:
+        values = i.split()
+        vec = np.asarray(values[1:],dtype='float32')
+        word2vec[values[0]] = vec
+
+
+
+#print(vec)
+
+token = Tokenizer(num_words=max_word)
+token.fit_on_texts(reviews)
+sentence = token.texts_to_sequences(reviews)
+
+worddix = token.word_index
+
+dataset = pad_sequences(sentence,maxlen=100)
+
+print("pre load our pretrained model")
+#number of words
+num_words = min(max_word,len(worddix)+1)
+embedding_matrix = np.zeros((num_words,embedding_dim))
+for word, i in worddix.items():
+    if i < num_words+1:
+        embed_vec = word2vec.get(word)
+        if embed_vec is not None:
+            embedding_matrix[i] = embed_vec
+
+embedding_layer = Embedding(num_words,embedding_dim,weights=[embedding_matrix],trainable=False,input_length=max_length)
+
+
+input_ = Input(shape=(max_length,))
+x = embedding_layer(input_)
+x = Conv1D(128,3,activation='relu')(x)
+x = MaxPooling1D(3)(x)
+x = Conv1D(128,3,activation='relu')(x)
+x = MaxPooling1D(3)(x)
+x = Conv1D(128,3,activation='relu')(x)
+x = GlobalMaxPooling1D()(x)
+
+x = Dense(128,activation='relu')(x)
+output = Dense(1,activation='sigmoid')(x)
+
+model = Model(input_,output)
+
+model.compile(optimizer='adam',metrics=['accuracy'],loss='binary_crossentropy')
+model.fit(dataset,target,batch_size=batch_size,epochs=epchos,validation_split=validation_split)
+
+predict = model.predict(dataset)
+
+model.save_weights('nlpmodel.h')
+
+model = model.load_weights('nlpmodel.h')
+
+
+# data = input("enter the string:")
+# token.fit_on_texts(data)
+# input_sentence = token.texts_to_sequences(data)
+# data_input = pad_sequences(input_sentence,maxlen=100)
+#+
+# predict_model = model.predict(data_input)
